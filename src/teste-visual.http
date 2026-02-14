@@ -1,0 +1,29 @@
+### 1. Criar Aluno na ACADEMIA A (Tenant A)
+POST http://localhost:8080/api/students
+Content-Type: application/json
+X-Tenant-ID: tenant_a
+
+{
+  "name": "Gabriel do Tenant A",
+  "email": "gabriel@academia-a.com",
+  "plan": "Gold"
+}
+
+### 2. Criar Aluno na ACADEMIA B (Tenant B)
+POST http://localhost:8080/api/students
+Content-Type: application/json
+X-Tenant-ID: tenant_b
+
+{
+  "name": "Maria do Tenant B",
+  "email": "maria@academia-b.com",
+  "plan": "Basic"
+}
+
+### 3. Listar Alunos da ACADEMIA A (Deve aparecer SÓ o Gabriel)
+GET http://localhost:8080/api/students
+X-Tenant-ID: tenant_a
+
+### 4. Listar Alunos da ACADEMIA B (Deve aparecer SÓ a Maria)
+GET http://localhost:8080/api/students
+X-Tenant-ID: tenant_b

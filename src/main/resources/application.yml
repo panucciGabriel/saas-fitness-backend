@@ -1,0 +1,35 @@
+server:
+  # O Railway define a porta automaticamente na variável $PORT
+  port: ${PORT:8080}
+
+spring:
+  application:
+    name: saas-fitness-b2b
+
+  datasource:
+    # Na nuvem, o Railway vai injetar essas variáveis automaticamente
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/postgres}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    # Em produção, usamos 'validate' para não deixar o Hibernate quebrar o banco
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+
+# Configurações Customizadas (JWT)
+api:
+  security:
+    token:
+      # A senha real será configurada no painel do Railway (Segurança!)
+      secret: ${JWT_SECRET:MinhaSenhaSuperSecretaDeDesenvolvimento123456}
