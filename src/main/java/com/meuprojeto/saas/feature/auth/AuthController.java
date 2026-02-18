@@ -130,6 +130,10 @@ public class AuthController {
 
         if (tokenStr == null)
             return ResponseEntity.badRequest().body("Token obrigatório.");
+        if (name == null || name.isBlank())
+            return ResponseEntity.badRequest().body("Nome obrigatório.");
+        if (email == null || email.isBlank())
+            return ResponseEntity.badRequest().body("E-mail obrigatório.");
         if (password == null || password.isBlank())
             return ResponseEntity.badRequest().body("Senha obrigatória.");
 
