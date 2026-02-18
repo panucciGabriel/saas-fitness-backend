@@ -23,8 +23,9 @@ public class Student {
     private Long id;
 
     private String name;
-
     private String email;
+
+    private String password;
 
     private String plan; // Ex: "Gold", "Basic"
 }

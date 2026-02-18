@@ -44,6 +44,7 @@ public class SecurityConfig {
                 // 4. Regras de Autorização
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/auth/**", "/error").permitAll()
+                        .requestMatchers("/api/invites/**").permitAll()
                         .anyRequest().authenticated()
                 )
 
