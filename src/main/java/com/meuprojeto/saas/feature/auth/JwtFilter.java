@@ -5,6 +5,8 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -15,6 +17,8 @@ import java.util.Collections;
 
 @Component
 public class JwtFilter extends OncePerRequestFilter {
+
+    private static final Logger log = LoggerFactory.getLogger(JwtFilter.class);
 
     private final TokenService tokenService;
 
@@ -45,11 +49,10 @@ public class JwtFilter extends OncePerRequestFilter {
                     String schema = tokenService.extractSchema(token);
 
                     if (schema != null) {
-                        // 3. Define o schema no Contexto
                         TenantContext.setTenant(schema);
-                        System.out.println("DEBUG: Tenant definido para -> " + schema);
+                        log.debug("Tenant definido para: {}", schema);
                     } else {
-                        System.out.println("DEBUG: Token válido, mas schema veio NULO.");
+                        log.warn("Token válido, mas schema veio nulo para o usuário: {}", email);
                     }
 
                     UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
@@ -58,14 +61,14 @@ public class JwtFilter extends OncePerRequestFilter {
                     SecurityContextHolder.getContext().setAuthentication(authentication);
                 }
             } catch (Exception e) {
-                System.out.println("DEBUG: Erro ao validar token: " + e.getMessage());
+                log.warn("Erro ao validar token: {}", e.getMessage());
             }
         }
 
         try {
             filterChain.doFilter(request, response);
         } finally {
-            // 4. Limpa o contexto SEMPRE após a requisição
+            // 3. Limpa o contexto SEMPRE após a requisição
             TenantContext.clear();
         }
     }

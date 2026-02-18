@@ -10,7 +10,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "invivtes", schema = "public")
+@Table(name = "invites", schema = "public") // <--- O erro estava aqui ("invivtes")
 @Data
 @Builder
 @NoArgsConstructor

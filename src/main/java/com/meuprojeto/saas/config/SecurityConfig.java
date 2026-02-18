@@ -3,6 +3,7 @@ package com.meuprojeto.saas.config;
 import com.meuprojeto.saas.feature.auth.JwtFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod; // <--- OBRIGATÓRIO TER ESSE IMPORT
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -16,7 +17,6 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import java.util.Arrays;
 import java.util.List;
 
 @Configuration
@@ -32,33 +32,36 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-                // 1. Configuração de CORS (Deve ser o primeiro)
+                // Configuração de CORS
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
 
-                // 2. Desabilitar CSRF para APIs REST
+                // Desabilita CSRF (Padrão para APIs REST)
                 .csrf(csrf -> csrf.disable())
 
-                // 3. Configurar política de sessão como Stateless (sem estado)
+                // Sessão Stateless
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 
-                // 4. Regras de Autorização
+                // --- REGRAS DE ACESSO (O PULO DO GATO) ---
                 .authorizeHttpRequests(auth -> auth
+                        // 1. Rotas 100% Públicas
                         .requestMatchers("/auth/**", "/error").permitAll()
-                        .requestMatchers("/api/invites/**").permitAll()
+
+                        // 2. Convites: Só LEITURA (GET) é pública. CRIAÇÃO (POST) exige login.
+                        .requestMatchers(HttpMethod.GET, "/api/invites/**").permitAll()
+
+                        // 3. Todo o resto exige token
                         .anyRequest().authenticated()
                 )
 
-                // 5. Adicionar o filtro JWT antes do filtro de autenticação padrão
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
 
-    // Dentro do seu SecurityConfig.java
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of("*")); // Libera para todos (Vercel, Localhost, etc)
+        configuration.setAllowedOrigins(List.of("*"));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
 
@@ -76,6 +79,4 @@ public class SecurityConfig {
     public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
         return config.getAuthenticationManager();
     }
-
-
 }

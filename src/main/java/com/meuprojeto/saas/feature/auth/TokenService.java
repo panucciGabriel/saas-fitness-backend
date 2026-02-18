@@ -3,8 +3,8 @@ package com.meuprojeto.saas.feature.auth;
 import com.meuprojeto.saas.feature.tenant.Tenant;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.security.Key;
@@ -15,22 +15,40 @@ import java.util.Map;
 @Service
 public class TokenService {
 
-    // Substitua a linha antiga por esta:
-    private static final Key SECRET_KEY = Keys.hmacShaKeyFor(
-            "minha_chave_secreta_super_segura_para_o_guia_saas_123".getBytes()
-    );
+    private final Key secretKey;
 
-    public String generateToken (Tenant tenant){
+    // Lê a chave do application.yml (variável de ambiente JWT_SECRET em produção)
+    public TokenService(@Value("${api.security.token.secret}") String secret) {
+        this.secretKey = Keys.hmacShaKeyFor(secret.getBytes());
+    }
+
+    // Token para o Personal (Tenant) — subject é o e-mail do Personal
+    public String generateToken(Tenant tenant) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("schema", tenant.getSchemaName());
         claims.put("tenantId", tenant.getId().toString());
+        claims.put("role", "TENANT");
 
+        return buildToken(claims, tenant.getOwnerEmail());
+    }
+
+    // Token para o Aluno — subject é o e-mail do próprio aluno
+    public String generateStudentToken(Tenant tenant, String studentEmail) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("schema", tenant.getSchemaName());
+        claims.put("tenantId", tenant.getId().toString());
+        claims.put("role", "STUDENT");
+
+        return buildToken(claims, studentEmail);
+    }
+
+    private String buildToken(Map<String, Object> claims, String subject) {
         return Jwts.builder()
                 .setClaims(claims)
-                .setSubject(tenant.getOwnerEmail())
+                .setSubject(subject)
                 .setIssuedAt(new Date(System.currentTimeMillis()))
-                .setExpiration(new Date(System.currentTimeMillis() + 1000 * 60 * 60 * 10))
-                .signWith(SECRET_KEY)
+                .setExpiration(new Date(System.currentTimeMillis() + 1000L * 60 * 60 * 10))
+                .signWith(secretKey)
                 .compact();
     }
 
@@ -38,14 +56,13 @@ public class TokenService {
         return extractAllClaims(token).get("schema", String.class);
     }
 
-    // Valida se o token é autêntico
     public boolean isTokenValid(String token, String email) {
-        final String username = extractAllClaims(token).getSubject();
-        return (username.equals(email) && !isTokenExpired(token));
+        final String subject = extractAllClaims(token).getSubject();
+        return (subject.equals(email) && !isTokenExpired(token));
     }
 
     private Claims extractAllClaims(String token) {
-        return Jwts.parserBuilder().setSigningKey(SECRET_KEY).build().parseClaimsJws(token).getBody();
+        return Jwts.parserBuilder().setSigningKey(secretKey).build().parseClaimsJws(token).getBody();
     }
 
     private boolean isTokenExpired(String token) {
@@ -55,5 +72,4 @@ public class TokenService {
     public String extractUsername(String token) {
         return extractAllClaims(token).getSubject();
     }
-
 }

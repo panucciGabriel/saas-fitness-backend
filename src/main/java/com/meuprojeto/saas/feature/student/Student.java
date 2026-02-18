@@ -1,17 +1,10 @@
 package com.meuprojeto.saas.feature.student;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import jakarta.persistence.*;
+import lombok.*;
 
 @Entity
-@Table(name = "students") // Note: SEM schema definido aqui!
+@Table(name = "students")
 @Data
 @Builder
 @NoArgsConstructor
@@ -24,8 +17,10 @@ public class Student {
 
     private String name;
     private String email;
+    private String password; // Obrigatório
 
-    private String password;
+    private String phone;    // Novo
+    private Integer age;     // Novo
 
-    private String plan; // Ex: "Gold", "Basic"
+    private String plan;
 }

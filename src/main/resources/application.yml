@@ -14,14 +14,11 @@ spring:
     driver-class-name: org.postgresql.Driver
 
   jpa:
-    # Em produção, usamos 'validate' para não deixar o Hibernate quebrar o banco
-    hibernate:
-      ddl-auto: validate
+    # ddl-auto e dialect são gerenciados pelo HibernateConfig (não duplicar aqui)
     show-sql: true
     properties:
       hibernate:
         format_sql: true
-        dialect: org.hibernate.dialect.PostgreSQLDialect
 
   flyway:
     enabled: true
@@ -32,4 +29,10 @@ api:
   security:
     token:
       # A senha real será configurada no painel do Railway (Segurança!)
-      secret: ${JWT_SECRET:MinhaSenhaSuperSecretaDeDesenvolvimento123456}
+      secret: ${JWT_SECRET:MinhaSenhaSuperSecretaDeDesenvolvimento123456789012}
+
+# URL do frontend — usada para gerar links de convite
+# Em produção, defina APP_FRONTEND_URL no Railway com a URL da Vercel
+app:
+  frontend:
+    url: ${APP_FRONTEND_URL:http://localhost:5173}

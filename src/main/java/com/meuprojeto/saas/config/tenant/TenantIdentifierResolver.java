@@ -13,6 +13,9 @@ public class TenantIdentifierResolver implements CurrentTenantIdentifierResolver
 
     @Override
     public boolean validateExistingCurrentSessions() {
-        return true;
+        // false: evita erros ao acessar tabelas do schema 'public' (Tenant, Invite,
+        // StudentDirectory)
+        // enquanto o TenantContext está setado para um schema de tenant
+        return false;
     }
 }
