@@ -24,7 +24,8 @@ spring:
   flyway:
     enabled: true
     baseline-on-migrate: true
-    validate-on-migrate: false
+    clean-disabled: false
+    clean-on-validation-error: true
 
 # Configurações Customizadas (JWT)
 api:
