@@ -13,15 +13,20 @@ import java.util.List;
 public class WorkoutController {
 
     private final WorkoutRepository workoutRepository;
+    private final WorkoutHistoryRepository workoutHistoryRepository;
     private final StudentRepository studentRepository;
 
-    // Injetamos o StudentRepository para podermos achar o aluno logado
-    public WorkoutController(WorkoutRepository workoutRepository, StudentRepository studentRepository) {
+    // Construtor atualizado com a injeção do WorkoutHistoryRepository
+    public WorkoutController(WorkoutRepository workoutRepository,
+                             WorkoutHistoryRepository workoutHistoryRepository,
+                             StudentRepository studentRepository) {
         this.workoutRepository = workoutRepository;
+        this.workoutHistoryRepository = workoutHistoryRepository;
         this.studentRepository = studentRepository;
     }
 
-    // --- ENDPOINT DO ALUNO ---
+    // --- ENDPOINTS DO ALUNO ---
+
     @GetMapping("/my")
     public ResponseEntity<List<Workout>> getMyWorkouts() {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
@@ -32,7 +37,24 @@ public class WorkoutController {
         return ResponseEntity.ok(workoutRepository.findByStudentId(student.getId()));
     }
 
+    @PostMapping("/{workoutId}/complete")
+    public ResponseEntity<WorkoutHistory> completeWorkout(@PathVariable Long workoutId) {
+        // Vai buscar o aluno autenticado
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        Student student = studentRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Aluno não encontrado"));
+
+        // Regista o histórico de treino
+        WorkoutHistory history = WorkoutHistory.builder()
+                .workoutId(workoutId)
+                .studentId(student.getId())
+                .build();
+
+        return ResponseEntity.ok(workoutHistoryRepository.save(history));
+    }
+
     // --- ENDPOINTS DO PERSONAL ---
+
     @GetMapping
     public ResponseEntity<List<Workout>> listAll() {
         return ResponseEntity.ok(workoutRepository.findAll());
@@ -41,6 +63,12 @@ public class WorkoutController {
     @GetMapping("/student/{studentId}")
     public ResponseEntity<List<Workout>> listByStudent(@PathVariable Long studentId) {
         return ResponseEntity.ok(workoutRepository.findByStudentId(studentId));
+    }
+
+    // --- NOVO ENDPOINT: Ver histórico de um aluno (Personal) ---
+    @GetMapping("/history/student/{studentId}")
+    public ResponseEntity<List<WorkoutHistory>> getStudentHistory(@PathVariable Long studentId) {
+        return ResponseEntity.ok(workoutHistoryRepository.findByStudentId(studentId));
     }
 
     @PostMapping
