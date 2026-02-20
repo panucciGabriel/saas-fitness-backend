@@ -10,6 +10,7 @@ import com.meuprojeto.saas.feature.student.StudentRepository;
 import com.meuprojeto.saas.feature.tenant.Tenant;
 import com.meuprojeto.saas.feature.tenant.TenantRepository;
 import com.meuprojeto.saas.feature.tenant.TenantService;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
@@ -32,12 +33,12 @@ public class AuthController {
     private final PasswordEncoder passwordEncoder;
 
     public AuthController(TenantRepository tenantRepository,
-            TokenService tokenService,
-            TenantService tenantService,
-            InviteRepository inviteRepository,
-            StudentRepository studentRepository,
-            StudentDirectoryRepository studentDirectoryRepository,
-            PasswordEncoder passwordEncoder) {
+                          TokenService tokenService,
+                          TenantService tenantService,
+                          InviteRepository inviteRepository,
+                          StudentRepository studentRepository,
+                          StudentDirectoryRepository studentDirectoryRepository,
+                          PasswordEncoder passwordEncoder) {
         this.tenantRepository = tenantRepository;
         this.tokenService = tokenService;
         this.tenantService = tenantService;
@@ -86,7 +87,7 @@ public class AuthController {
                     return ResponseEntity.status(401).body(Map.of("error", "Usuário ou senha inválidos."));
                 }
 
-                // Token com o e-mail do próprio aluno como subject (corrigido)
+                // Token com o e-mail do próprio aluno como subject
                 String token = tokenService.generateStudentToken(tenant, email);
                 return ResponseEntity.ok(Map.of("token", token, "role", "STUDENT"));
             } finally {
@@ -108,10 +109,18 @@ public class AuthController {
             return ResponseEntity.badRequest().body(Map.of("error", "Nome, e-mail e senha são obrigatórios."));
         }
 
-        String schema = "tenant_" + name.toLowerCase().replace(" ", "_");
-        tenantService.createTenant(name, email, schema, passwordEncoder.encode(password));
+        try {
+            String schema = "tenant_" + name.toLowerCase().replace(" ", "_");
+            tenantService.createTenant(name, email, schema, passwordEncoder.encode(password));
 
-        return ResponseEntity.ok(Map.of("message", "Academia criada com sucesso!", "schema", schema));
+            return ResponseEntity.ok(Map.of("message", "Academia criada com sucesso!", "schema", schema));
+
+        } catch (DataIntegrityViolationException e) {
+            // Captura o erro do banco de dados (Unique Constraint) e devolve uma mensagem amigável
+            return ResponseEntity.badRequest().body(Map.of("error", "Este e-mail ou nome de academia já está em uso. Escolha outro."));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of("error", "Erro interno ao criar conta."));
+        }
     }
 
     // --- CADASTRO DE ALUNO (SELF-SERVICE) ---
@@ -129,20 +138,26 @@ public class AuthController {
         }
 
         if (tokenStr == null)
-            return ResponseEntity.badRequest().body("Token obrigatório.");
+            return ResponseEntity.badRequest().body(Map.of("error", "Token obrigatório."));
         if (name == null || name.isBlank())
-            return ResponseEntity.badRequest().body("Nome obrigatório.");
+            return ResponseEntity.badRequest().body(Map.of("error", "Nome obrigatório."));
         if (email == null || email.isBlank())
-            return ResponseEntity.badRequest().body("E-mail obrigatório.");
+            return ResponseEntity.badRequest().body(Map.of("error", "E-mail obrigatório."));
         if (password == null || password.isBlank())
-            return ResponseEntity.badRequest().body("Senha obrigatória.");
+            return ResponseEntity.badRequest().body(Map.of("error", "Senha obrigatória."));
 
-        UUID tokenUUID = UUID.fromString(tokenStr);
+        UUID tokenUUID;
+        try {
+            tokenUUID = UUID.fromString(tokenStr);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Token em formato inválido."));
+        }
+
         Invite invite = inviteRepository.findById(tokenUUID)
                 .orElseThrow(() -> new RuntimeException("Convite inválido."));
 
         if (invite.isUsed() || invite.getExpiresAt().isBefore(LocalDateTime.now())) {
-            return ResponseEntity.badRequest().body("Convite inválido ou expirado.");
+            return ResponseEntity.badRequest().body(Map.of("error", "Convite inválido ou expirado."));
         }
 
         Tenant tenant = tenantRepository.findById(invite.getTenantId())
@@ -150,6 +165,12 @@ public class AuthController {
 
         try {
             TenantContext.setTenant(tenant.getSchemaName());
+
+            // Verifica se o email já existe para este tenant
+            Optional<Student> existingStudent = studentRepository.findByEmail(email);
+            if(existingStudent.isPresent()){
+                return ResponseEntity.badRequest().body(Map.of("error", "Este e-mail já está cadastrado nesta academia."));
+            }
 
             Student student = new Student();
             student.setName(name);

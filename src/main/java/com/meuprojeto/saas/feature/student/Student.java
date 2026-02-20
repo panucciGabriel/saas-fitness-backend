@@ -16,11 +16,16 @@ public class Student {
     private Long id;
 
     private String name;
-    private String email;
-    private String password; // Obrigatório
 
-    private String phone;    // Novo
-    private Integer age;     // Novo
+    private String email;
+
+    private String password;
+
+    // --- NOVOS CAMPOS ---
+    private String phone;
+
+    private Integer age;
+    // --------------------
 
     private String plan;
 }

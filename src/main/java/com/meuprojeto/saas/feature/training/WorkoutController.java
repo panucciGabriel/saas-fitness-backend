@@ -1,6 +1,9 @@
 package com.meuprojeto.saas.feature.training;
 
+import com.meuprojeto.saas.feature.student.Student;
+import com.meuprojeto.saas.feature.student.StudentRepository;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -10,11 +13,26 @@ import java.util.List;
 public class WorkoutController {
 
     private final WorkoutRepository workoutRepository;
+    private final StudentRepository studentRepository;
 
-    public WorkoutController(WorkoutRepository workoutRepository) {
+    // Injetamos o StudentRepository para podermos achar o aluno logado
+    public WorkoutController(WorkoutRepository workoutRepository, StudentRepository studentRepository) {
         this.workoutRepository = workoutRepository;
+        this.studentRepository = studentRepository;
     }
 
+    // --- ENDPOINT DO ALUNO ---
+    @GetMapping("/my")
+    public ResponseEntity<List<Workout>> getMyWorkouts() {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+
+        Student student = studentRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Aluno não encontrado"));
+
+        return ResponseEntity.ok(workoutRepository.findByStudentId(student.getId()));
+    }
+
+    // --- ENDPOINTS DO PERSONAL ---
     @GetMapping
     public ResponseEntity<List<Workout>> listAll() {
         return ResponseEntity.ok(workoutRepository.findAll());

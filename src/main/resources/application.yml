@@ -16,6 +16,7 @@ spring:
   jpa:
     # ddl-auto e dialect são gerenciados pelo HibernateConfig (não duplicar aqui)
     show-sql: true
+    open-in-view: false
     properties:
       hibernate:
         format_sql: true
