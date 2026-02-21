@@ -2,6 +2,7 @@ package com.meuprojeto.saas.feature.invite;
 
 import com.meuprojeto.saas.feature.tenant.Tenant;
 import com.meuprojeto.saas.feature.tenant.TenantRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -18,20 +19,23 @@ public class InviteController {
     private final InviteRepository inviteRepository;
     private final TenantRepository tenantRepository;
 
+    // 🌟 AQUI ESTÁ A MÁGICA: Puxando a URL do application.yml / Railway
+    @Value("${app.frontend.url}")
+    private String frontendUrl;
+
     public InviteController(InviteRepository inviteRepository, TenantRepository tenantRepository) {
         this.inviteRepository = inviteRepository;
         this.tenantRepository = tenantRepository;
     }
 
     // --- 1. CRIAR CONVITE (POST) ---
-    // Não recebe @RequestBody, pois é apenas um clique no botão.
     @PostMapping
     public ResponseEntity<?> createInvite() {
         // Pega o usuário logado do contexto de segurança
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
 
         if (auth == null || !auth.isAuthenticated()) {
-            return ResponseEntity.status(403).body("Usuário não autenticado.");
+            return ResponseEntity.status(403).body(Map.of("error", "Usuário não autenticado."));
         }
 
         String ownerEmail = auth.getName();
@@ -48,8 +52,8 @@ public class InviteController {
 
         inviteRepository.save(invite);
 
-        // Gera o link (Ajuste a URL base se for rodar em produção)
-        String link = "http://localhost:5173/register?token=" + invite.getId();
+        // 🌟 AGORA A URL É DINÂMICA
+        String link = frontendUrl + "/register?token=" + invite.getId();
 
         return ResponseEntity.ok(Map.of(
                 "link", link,
