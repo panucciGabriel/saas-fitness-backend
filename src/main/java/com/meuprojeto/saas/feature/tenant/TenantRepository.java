@@ -9,4 +9,7 @@ import java.util.Optional;
 public interface TenantRepository extends JpaRepository<Tenant, Long> {
 
     Optional<Tenant> findByOwnerEmail(String ownerEmail);
+
+    // 🌟 NOVO: Busca o Personal pelo WhatsApp
+    Optional<Tenant> findByPhone(String phone);
 }

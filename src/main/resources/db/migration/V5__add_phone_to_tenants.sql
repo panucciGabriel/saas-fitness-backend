@@ -1,0 +1,1 @@
+ALTER TABLE public.tenants ADD COLUMN phone VARCHAR(20) UNIQUE;

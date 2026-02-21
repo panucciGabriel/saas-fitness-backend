@@ -7,6 +7,8 @@ import java.util.Optional;
 
 @Repository
 public interface StudentRepository extends JpaRepository<Student, Long> {
-    // Método adicionado para buscar o aluno pelo email do token de login
     Optional<Student> findByEmail(String email);
+
+    // 🌟 NOVO: Busca o Aluno pelo WhatsApp
+    Optional<Student> findByPhone(String phone);
 }

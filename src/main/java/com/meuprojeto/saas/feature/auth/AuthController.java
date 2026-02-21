@@ -99,24 +99,30 @@ public class AuthController {
     }
 
     // --- CADASTRO DE PERSONAL ---
+    // --- CADASTRO DE PERSONAL ---
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody Map<String, String> request) {
         String name = request.get("name");
         String email = request.get("email");
         String password = request.get("password");
+        String phone = request.get("phone"); // 🌟 NOVO: Pega o telefone do corpo da requisição
 
-        if (name == null || email == null || password == null) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Nome, e-mail e senha são obrigatórios."));
+        if (name == null || email == null || password == null || phone == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Nome, e-mail, senha e WhatsApp são obrigatórios."));
+        }
+
+        // 🌟 NOVO: Verifica se o WhatsApp já existe no sistema todo
+        if (tenantRepository.findByPhone(phone).isPresent()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Este número de WhatsApp já está registado num Personal."));
         }
 
         try {
             String schema = "tenant_" + name.toLowerCase().replace(" ", "_");
-            tenantService.createTenant(name, email, schema, passwordEncoder.encode(password));
+            tenantService.createTenant(name, email, schema, passwordEncoder.encode(password), phone); // 🌟 Passa o phone
 
             return ResponseEntity.ok(Map.of("message", "Academia criada com sucesso!", "schema", schema));
 
         } catch (DataIntegrityViolationException e) {
-            // Captura o erro do banco de dados (Unique Constraint) e devolve uma mensagem amigável
             return ResponseEntity.badRequest().body(Map.of("error", "Este e-mail ou nome de academia já está em uso. Escolha outro."));
         } catch (Exception e) {
             return ResponseEntity.status(500).body(Map.of("error", "Erro interno ao criar conta."));
@@ -166,16 +172,22 @@ public class AuthController {
         try {
             TenantContext.setTenant(tenant.getSchemaName());
 
-            // Verifica se o email já existe para este tenant
+            // Verifica se o email já existe
             Optional<Student> existingStudent = studentRepository.findByEmail(email);
             if(existingStudent.isPresent()){
                 return ResponseEntity.badRequest().body(Map.of("error", "Este e-mail já está cadastrado nesta academia."));
             }
 
+            // 🌟 NOVO: Verifica se o WhatsApp já existe NESTA academia
+            Optional<Student> existingPhone = studentRepository.findByPhone(phone);
+            if(existingPhone.isPresent()){
+                return ResponseEntity.badRequest().body(Map.of("error", "Este número de WhatsApp já está em uso nesta academia."));
+            }
+
             Student student = new Student();
             student.setName(name);
             student.setEmail(email);
-            student.setPassword(passwordEncoder.encode(password)); // Senha hasheada com BCrypt
+            student.setPassword(passwordEncoder.encode(password));
             student.setPhone(phone);
             student.setAge(age);
             student.setPlan("Basic");

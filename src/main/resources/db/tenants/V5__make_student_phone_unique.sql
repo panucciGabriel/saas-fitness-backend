@@ -1,0 +1,1 @@
+ALTER TABLE students ADD CONSTRAINT uk_student_phone UNIQUE (phone);
