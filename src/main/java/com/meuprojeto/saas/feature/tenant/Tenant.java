@@ -28,9 +28,10 @@ public class Tenant {
     @Column(nullable = false)
     private String password;
 
-    // 🌟 NOVO CAMPO ADICIONADO AQUI
     @Column(unique = true)
     private String phone;
+
+    private String plan = "FREE";
 
     private boolean active = true;
 

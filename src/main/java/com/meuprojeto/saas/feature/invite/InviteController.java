@@ -1,5 +1,7 @@
 package com.meuprojeto.saas.feature.invite;
 
+import com.meuprojeto.saas.config.tenant.TenantContext;
+import com.meuprojeto.saas.feature.student.StudentRepository;
 import com.meuprojeto.saas.feature.tenant.Tenant;
 import com.meuprojeto.saas.feature.tenant.TenantRepository;
 import org.springframework.beans.factory.annotation.Value;
@@ -18,20 +20,22 @@ public class InviteController {
 
     private final InviteRepository inviteRepository;
     private final TenantRepository tenantRepository;
+    private final StudentRepository studentRepository; // 🌟 NOVO: Injetando o repositório de alunos
 
-    // 🌟 AQUI ESTÁ A MÁGICA: Puxando a URL do application.yml / Railway
     @Value("${app.frontend.url}")
     private String frontendUrl;
 
-    public InviteController(InviteRepository inviteRepository, TenantRepository tenantRepository) {
+    public InviteController(InviteRepository inviteRepository,
+                            TenantRepository tenantRepository,
+                            StudentRepository studentRepository) {
         this.inviteRepository = inviteRepository;
         this.tenantRepository = tenantRepository;
+        this.studentRepository = studentRepository;
     }
 
     // --- 1. CRIAR CONVITE (POST) ---
     @PostMapping
     public ResponseEntity<?> createInvite() {
-        // Pega o usuário logado do contexto de segurança
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
 
         if (auth == null || !auth.isAuthenticated()) {
@@ -39,11 +43,25 @@ public class InviteController {
         }
 
         String ownerEmail = auth.getName();
-
         Tenant tenant = tenantRepository.findByOwnerEmail(ownerEmail)
                 .orElseThrow(() -> new RuntimeException("Personal não encontrado."));
 
-        // Cria convite genérico (email null)
+        // 🌟 NOVA REGRA DE NEGÓCIO: Limite de 5 alunos no Plano Free
+        if ("FREE".equalsIgnoreCase(tenant.getPlan())) {
+            TenantContext.setTenant(tenant.getSchemaName()); // Entra no banco do Personal
+            try {
+                long studentCount = studentRepository.count(); // Conta os alunos
+                if (studentCount >= 5) {
+                    return ResponseEntity.status(403).body(Map.of(
+                            "error", "Limite do Plano Grátis atingido! Você já possui 5 alunos. Faça o upgrade para adicionar mais."
+                    ));
+                }
+            } finally {
+                TenantContext.clear(); // Sai do banco do Personal
+            }
+        }
+
+        // Se passou do limite, cria o convite normalmente
         Invite invite = Invite.builder()
                 .tenantId(tenant.getId())
                 .email(null)
@@ -52,7 +70,6 @@ public class InviteController {
 
         inviteRepository.save(invite);
 
-        // 🌟 AGORA A URL É DINÂMICA
         String link = frontendUrl + "/register?token=" + invite.getId();
 
         return ResponseEntity.ok(Map.of(

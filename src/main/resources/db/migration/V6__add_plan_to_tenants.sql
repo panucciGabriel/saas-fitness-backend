@@ -1,0 +1,1 @@
+ALTER TABLE public.tenants ADD COLUMN plan VARCHAR(50) DEFAULT 'FREE';
