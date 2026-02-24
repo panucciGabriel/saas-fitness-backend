@@ -53,7 +53,9 @@ public class InviteController {
                 long studentCount = studentRepository.count(); // Conta os alunos
                 if (studentCount >= 5) {
                     return ResponseEntity.status(403).body(Map.of(
-                            "error", "Limite do Plano Grátis atingido! Você já possui 5 alunos. Faça o upgrade para adicionar mais."
+                            "error", "Limite do Plano Grátis atingido! Você     2q4edx4ed5tg6y9ol/.´~" +
+                                    "j+63" +
+                                    "á possui 5 alunos. Faça o upgrade para adicionar mais."
                     ));
                 }
             } finally {

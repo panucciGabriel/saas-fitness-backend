@@ -1,5 +1,9 @@
 package com.meuprojeto.saas.feature.auth;
 
+import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
+import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier;
+import com.google.api.client.http.javanet.NetHttpTransport;
+import com.google.api.client.json.gson.GsonFactory;
 import com.meuprojeto.saas.config.tenant.TenantContext;
 import com.meuprojeto.saas.feature.invite.Invite;
 import com.meuprojeto.saas.feature.invite.InviteRepository;
@@ -16,6 +20,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -96,6 +101,65 @@ public class AuthController {
         }
 
         return ResponseEntity.status(401).body(Map.of("error", "Usuário ou senha inválidos."));
+    }
+
+
+    @PostMapping("/google")
+    public ResponseEntity<?> googleLogin(@RequestBody Map<String, String> request) {
+        String googleToken = request.get("token");
+
+        if (googleToken == null || googleToken.isEmpty()) {
+            return ResponseEntity.status(400).body(Map.of("error", "Token do Google não enviado."));
+        }
+
+        try {
+            // 1. Configura o "Inspetor" do Google
+            GoogleIdTokenVerifier verifier = new GoogleIdTokenVerifier.Builder(new NetHttpTransport(), new GsonFactory())
+                    // 🌟 ATENÇÃO: COLE O SEU CLIENT_ID AQUI DENTRO
+                    .setAudience(Collections.singletonList("629004845915-6ge8nhfsdh3r8a5dd59pnvogc6875bot.apps.googleusercontent.com"))
+                    .build();
+
+            // 2. Valida o token
+            GoogleIdToken idToken = verifier.verify(googleToken);
+
+            if (idToken != null) {
+                GoogleIdToken.Payload payload = idToken.getPayload();
+                String email = payload.getEmail();
+                String name = (String) payload.get("name");
+
+                // 3. Tenta achar como PERSONAL
+                Optional<Tenant> tenantOpt = tenantRepository.findByOwnerEmail(email);
+                if (tenantOpt.isPresent()) {
+                    Tenant tenant = tenantOpt.get();
+
+                    // 🌟 Usa o seu tokenService real para Personais
+                    String token = tokenService.generateToken(tenant);
+                    return ResponseEntity.ok(Map.of("token", token, "role", "TENANT", "name", name));
+                }
+
+                // 4. Tenta achar como ALUNO
+                Optional<StudentDirectory> directoryOpt = studentDirectoryRepository.findByEmail(email);
+                if (directoryOpt.isPresent()) {
+                    Long tenantId = directoryOpt.get().getTenantId();
+                    Tenant tenant = tenantRepository.findById(tenantId)
+                            .orElseThrow(() -> new RuntimeException("Erro: Personal do aluno não encontrado."));
+
+                    // 🌟 Usa o seu tokenService real para Alunos (Não precisa verificar a senha!)
+                    String token = tokenService.generateStudentToken(tenant, email);
+                    return ResponseEntity.ok(Map.of("token", token, "role", "STUDENT", "name", name));
+                }
+
+                // 5. Se o Google confirmou, mas a pessoa não tem conta na nossa plataforma ainda:
+                return ResponseEntity.status(404).body(Map.of(
+                        "error", "Conta não encontrada. Por favor, crie sua academia ou matricule-se primeiro."
+                ));
+
+            } else {
+                return ResponseEntity.status(401).body(Map.of("error", "Token do Google inválido ou expirado."));
+            }
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of("error", "Erro interno ao validar com o Google: " + e.getMessage()));
+        }
     }
 
     // --- CADASTRO DE PERSONAL ---
