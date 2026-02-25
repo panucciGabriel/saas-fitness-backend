@@ -28,6 +28,7 @@ public class TokenService {
         claims.put("schema", tenant.getSchemaName());
         claims.put("tenantId", tenant.getId().toString());
         claims.put("role", "TENANT");
+        claims.put("name", tenant.getName());
 
         return buildToken(claims, tenant.getOwnerEmail());
     }

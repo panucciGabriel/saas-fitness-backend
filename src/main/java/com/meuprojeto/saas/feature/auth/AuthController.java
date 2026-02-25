@@ -103,7 +103,7 @@ public class AuthController {
         return ResponseEntity.status(401).body(Map.of("error", "Usuário ou senha inválidos."));
     }
 
-
+    // --- LOGIN E CADASTRO COM GOOGLE ---
     @PostMapping("/google")
     public ResponseEntity<?> googleLogin(@RequestBody Map<String, String> request) {
         String googleToken = request.get("token");
@@ -115,7 +115,7 @@ public class AuthController {
         try {
             // 1. Configura o "Inspetor" do Google
             GoogleIdTokenVerifier verifier = new GoogleIdTokenVerifier.Builder(new NetHttpTransport(), new GsonFactory())
-                    // 🌟 ATENÇÃO: COLE O SEU CLIENT_ID AQUI DENTRO
+                    // 🌟 MANTENHA A SUA CHAVE AQUI
                     .setAudience(Collections.singletonList("629004845915-6ge8nhfsdh3r8a5dd59pnvogc6875bot.apps.googleusercontent.com"))
                     .build();
 
@@ -131,8 +131,6 @@ public class AuthController {
                 Optional<Tenant> tenantOpt = tenantRepository.findByOwnerEmail(email);
                 if (tenantOpt.isPresent()) {
                     Tenant tenant = tenantOpt.get();
-
-                    // 🌟 Usa o seu tokenService real para Personais
                     String token = tokenService.generateToken(tenant);
                     return ResponseEntity.ok(Map.of("token", token, "role", "TENANT", "name", name));
                 }
@@ -144,14 +142,36 @@ public class AuthController {
                     Tenant tenant = tenantRepository.findById(tenantId)
                             .orElseThrow(() -> new RuntimeException("Erro: Personal do aluno não encontrado."));
 
-                    // 🌟 Usa o seu tokenService real para Alunos (Não precisa verificar a senha!)
                     String token = tokenService.generateStudentToken(tenant, email);
                     return ResponseEntity.ok(Map.of("token", token, "role", "STUDENT", "name", name));
                 }
 
-                // 5. Se o Google confirmou, mas a pessoa não tem conta na nossa plataforma ainda:
-                return ResponseEntity.status(404).body(Map.of(
-                        "error", "Conta não encontrada. Por favor, crie sua academia ou matricule-se primeiro."
+                // 🌟 5. A MÁGICA DO CADASTRO AUTOMÁTICO (Sign-Up) 🌟
+                // Se o Google confirmou, mas a pessoa não tem conta, criamos o Personal agora mesmo!
+
+                // Trata o nome e gera um schema único sem espaços ou caracteres especiais
+                String tenantName = (name != null && !name.isEmpty()) ? name : email.split("@")[0];
+                String schemaName = "tenant_" + email.split("@")[0].replaceAll("[^a-zA-Z0-9]", "").toLowerCase();
+
+                // Gera senha invisível (o usuário sempre usará o Google)
+                String randomPassword = UUID.randomUUID().toString();
+                String encodedPassword = passwordEncoder.encode(randomPassword);
+
+                // Chama o tenantService para garantir que os schemas/tabelas sejam criados
+                // Passamos 'null' no telefone, pois o Google não envia essa informação
+                tenantService.createTenant(tenantName, email, schemaName, encodedPassword, null);
+
+                // Busca o Personal recém-criado para gerar o Token
+                Tenant novoTenant = tenantRepository.findByOwnerEmail(email)
+                        .orElseThrow(() -> new RuntimeException("Erro ao recuperar a conta recém-criada via Google."));
+
+                String token = tokenService.generateToken(novoTenant);
+
+                return ResponseEntity.ok(Map.of(
+                        "token", token,
+                        "role", "TENANT",
+                        "name", tenantName,
+                        "isNewAccount", true // Flag para o Frontend saber que é conta nova (se quiser mostrar um "Bem-vindo")
                 ));
 
             } else {
@@ -162,27 +182,25 @@ public class AuthController {
         }
     }
 
-    // --- CADASTRO DE PERSONAL ---
-    // --- CADASTRO DE PERSONAL ---
+    // --- CADASTRO DE PERSONAL (Tradicional) ---
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody Map<String, String> request) {
         String name = request.get("name");
         String email = request.get("email");
         String password = request.get("password");
-        String phone = request.get("phone"); // 🌟 NOVO: Pega o telefone do corpo da requisição
+        String phone = request.get("phone");
 
         if (name == null || email == null || password == null || phone == null) {
             return ResponseEntity.badRequest().body(Map.of("error", "Nome, e-mail, senha e WhatsApp são obrigatórios."));
         }
 
-        // 🌟 NOVO: Verifica se o WhatsApp já existe no sistema todo
         if (tenantRepository.findByPhone(phone).isPresent()) {
             return ResponseEntity.badRequest().body(Map.of("error", "Este número de WhatsApp já está registado num Personal."));
         }
 
         try {
             String schema = "tenant_" + name.toLowerCase().replace(" ", "_");
-            tenantService.createTenant(name, email, schema, passwordEncoder.encode(password), phone); // 🌟 Passa o phone
+            tenantService.createTenant(name, email, schema, passwordEncoder.encode(password), phone);
 
             return ResponseEntity.ok(Map.of("message", "Academia criada com sucesso!", "schema", schema));
 
@@ -236,13 +254,11 @@ public class AuthController {
         try {
             TenantContext.setTenant(tenant.getSchemaName());
 
-            // Verifica se o email já existe
             Optional<Student> existingStudent = studentRepository.findByEmail(email);
             if(existingStudent.isPresent()){
                 return ResponseEntity.badRequest().body(Map.of("error", "Este e-mail já está cadastrado nesta academia."));
             }
 
-            // 🌟 NOVO: Verifica se o WhatsApp já existe NESTA academia
             Optional<Student> existingPhone = studentRepository.findByPhone(phone);
             if(existingPhone.isPresent()){
                 return ResponseEntity.badRequest().body(Map.of("error", "Este número de WhatsApp já está em uso nesta academia."));
@@ -261,11 +277,9 @@ public class AuthController {
             TenantContext.clear();
         }
 
-        // Salva na lista pública
         StudentDirectory directory = new StudentDirectory(email, tenant.getId());
         studentDirectoryRepository.save(directory);
 
-        // Queima o convite
         invite.setUsed(true);
         inviteRepository.save(invite);
 

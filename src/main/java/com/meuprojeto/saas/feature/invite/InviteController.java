@@ -26,8 +26,8 @@ public class InviteController {
     private String frontendUrl;
 
     public InviteController(InviteRepository inviteRepository,
-                            TenantRepository tenantRepository,
-                            StudentRepository studentRepository) {
+            TenantRepository tenantRepository,
+            StudentRepository studentRepository) {
         this.inviteRepository = inviteRepository;
         this.tenantRepository = tenantRepository;
         this.studentRepository = studentRepository;
@@ -46,16 +46,13 @@ public class InviteController {
         Tenant tenant = tenantRepository.findByOwnerEmail(ownerEmail)
                 .orElseThrow(() -> new RuntimeException("Personal não encontrado."));
 
-        // 🌟 NOVA REGRA DE NEGÓCIO: Limite de 5 alunos no Plano Free
         if ("FREE".equalsIgnoreCase(tenant.getPlan())) {
             TenantContext.setTenant(tenant.getSchemaName()); // Entra no banco do Personal
             try {
                 long studentCount = studentRepository.count(); // Conta os alunos
                 if (studentCount >= 5) {
                     return ResponseEntity.status(403).body(Map.of(
-                            "error", "Limite do Plano Grátis atingido! Você     2q4edx4ed5tg6y9ol/.´~" +
-                                    "j+63" +
-                                    "á possui 5 alunos. Faça o upgrade para adicionar mais."
+                            "error", "Limite do Plano Grátis atingido! Você já possui 5 alunos. Faça o upgrade para adicionar mais."
                     ));
                 }
             } finally {
@@ -70,15 +67,14 @@ public class InviteController {
                 .expiresAt(LocalDateTime.now().plusHours(48))
                 .build();
 
-        inviteRepository.save(invite);
+        invite = inviteRepository.save(invite);
 
         String link = frontendUrl + "/register?token=" + invite.getId();
 
         return ResponseEntity.ok(Map.of(
                 "link", link,
                 "token", invite.getId(),
-                "expiresAt", invite.getExpiresAt()
-        ));
+                "expiresAt", invite.getExpiresAt()));
     }
 
     // --- 2. VALIDAR CONVITE (GET) ---
@@ -100,8 +96,7 @@ public class InviteController {
                     return ResponseEntity.ok(Map.of(
                             "valid", true,
                             "personalName", personalName,
-                            "tenantId", invite.getTenantId()
-                    ));
+                            "tenantId", invite.getTenantId()));
                 })
                 .orElse(ResponseEntity.status(404).body(Map.of("error", "Convite não encontrado.")));
     }
