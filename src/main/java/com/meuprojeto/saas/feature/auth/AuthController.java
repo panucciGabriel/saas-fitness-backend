@@ -14,6 +14,13 @@ import com.meuprojeto.saas.feature.student.StudentRepository;
 import com.meuprojeto.saas.feature.tenant.Tenant;
 import com.meuprojeto.saas.feature.tenant.TenantRepository;
 import com.meuprojeto.saas.feature.tenant.TenantService;
+
+// 🌟 NOVOS IMPORTS DA RECUPERAÇÃO DE SENHA
+import com.meuprojeto.saas.feature.password.EmailService;
+import com.meuprojeto.saas.feature.password.PasswordResetToken;
+import com.meuprojeto.saas.feature.password.PasswordResetTokenRepository;
+import org.springframework.transaction.annotation.Transactional;
+
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -37,13 +44,19 @@ public class AuthController {
     private final StudentDirectoryRepository studentDirectoryRepository;
     private final PasswordEncoder passwordEncoder;
 
+    // 🌟 NOVAS INJEÇÕES
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
+    private final EmailService emailService;
+
     public AuthController(TenantRepository tenantRepository,
                           TokenService tokenService,
                           TenantService tenantService,
                           InviteRepository inviteRepository,
                           StudentRepository studentRepository,
                           StudentDirectoryRepository studentDirectoryRepository,
-                          PasswordEncoder passwordEncoder) {
+                          PasswordEncoder passwordEncoder,
+                          PasswordResetTokenRepository passwordResetTokenRepository,
+                          EmailService emailService) {
         this.tenantRepository = tenantRepository;
         this.tokenService = tokenService;
         this.tenantService = tenantService;
@@ -51,6 +64,8 @@ public class AuthController {
         this.studentRepository = studentRepository;
         this.studentDirectoryRepository = studentDirectoryRepository;
         this.passwordEncoder = passwordEncoder;
+        this.passwordResetTokenRepository = passwordResetTokenRepository;
+        this.emailService = emailService;
     }
 
     // --- LOGIN UNIFICADO ---
@@ -63,11 +78,9 @@ public class AuthController {
             return ResponseEntity.status(400).body(Map.of("error", "E-mail e senha são obrigatórios."));
         }
 
-        // 1. Tenta achar como PERSONAL
         Optional<Tenant> tenantOpt = tenantRepository.findByOwnerEmail(email);
         if (tenantOpt.isPresent()) {
             Tenant tenant = tenantOpt.get();
-            // Valida a senha do Personal com BCrypt
             if (!passwordEncoder.matches(rawPassword, tenant.getPassword())) {
                 return ResponseEntity.status(401).body(Map.of("error", "Usuário ou senha inválidos."));
             }
@@ -75,14 +88,12 @@ public class AuthController {
             return ResponseEntity.ok(Map.of("token", token, "role", "TENANT"));
         }
 
-        // 2. Tenta achar como ALUNO
         Optional<StudentDirectory> directoryOpt = studentDirectoryRepository.findByEmail(email);
         if (directoryOpt.isPresent()) {
             Long tenantId = directoryOpt.get().getTenantId();
             Tenant tenant = tenantRepository.findById(tenantId)
                     .orElseThrow(() -> new RuntimeException("Erro: Personal do aluno não encontrado."));
 
-            // Busca o aluno no schema correto para validar a senha
             TenantContext.setTenant(tenant.getSchemaName());
             try {
                 Student student = studentRepository.findByEmail(email)
@@ -92,7 +103,6 @@ public class AuthController {
                     return ResponseEntity.status(401).body(Map.of("error", "Usuário ou senha inválidos."));
                 }
 
-                // Token com o e-mail do próprio aluno como subject
                 String token = tokenService.generateStudentToken(tenant, email);
                 return ResponseEntity.ok(Map.of("token", token, "role", "STUDENT"));
             } finally {
@@ -113,13 +123,10 @@ public class AuthController {
         }
 
         try {
-            // 1. Configura o "Inspetor" do Google
             GoogleIdTokenVerifier verifier = new GoogleIdTokenVerifier.Builder(new NetHttpTransport(), new GsonFactory())
-                    // 🌟 MANTENHA A SUA CHAVE AQUI
                     .setAudience(Collections.singletonList("629004845915-6ge8nhfsdh3r8a5dd59pnvogc6875bot.apps.googleusercontent.com"))
                     .build();
 
-            // 2. Valida o token
             GoogleIdToken idToken = verifier.verify(googleToken);
 
             if (idToken != null) {
@@ -127,7 +134,6 @@ public class AuthController {
                 String email = payload.getEmail();
                 String name = (String) payload.get("name");
 
-                // 3. Tenta achar como PERSONAL
                 Optional<Tenant> tenantOpt = tenantRepository.findByOwnerEmail(email);
                 if (tenantOpt.isPresent()) {
                     Tenant tenant = tenantOpt.get();
@@ -135,7 +141,6 @@ public class AuthController {
                     return ResponseEntity.ok(Map.of("token", token, "role", "TENANT", "name", name));
                 }
 
-                // 4. Tenta achar como ALUNO
                 Optional<StudentDirectory> directoryOpt = studentDirectoryRepository.findByEmail(email);
                 if (directoryOpt.isPresent()) {
                     Long tenantId = directoryOpt.get().getTenantId();
@@ -146,22 +151,13 @@ public class AuthController {
                     return ResponseEntity.ok(Map.of("token", token, "role", "STUDENT", "name", name));
                 }
 
-                // 🌟 5. A MÁGICA DO CADASTRO AUTOMÁTICO (Sign-Up) 🌟
-                // Se o Google confirmou, mas a pessoa não tem conta, criamos o Personal agora mesmo!
-
-                // Trata o nome e gera um schema único sem espaços ou caracteres especiais
                 String tenantName = (name != null && !name.isEmpty()) ? name : email.split("@")[0];
                 String schemaName = "tenant_" + email.split("@")[0].replaceAll("[^a-zA-Z0-9]", "").toLowerCase();
-
-                // Gera senha invisível (o usuário sempre usará o Google)
                 String randomPassword = UUID.randomUUID().toString();
                 String encodedPassword = passwordEncoder.encode(randomPassword);
 
-                // Chama o tenantService para garantir que os schemas/tabelas sejam criados
-                // Passamos 'null' no telefone, pois o Google não envia essa informação
                 tenantService.createTenant(tenantName, email, schemaName, encodedPassword, null);
 
-                // Busca o Personal recém-criado para gerar o Token
                 Tenant novoTenant = tenantRepository.findByOwnerEmail(email)
                         .orElseThrow(() -> new RuntimeException("Erro ao recuperar a conta recém-criada via Google."));
 
@@ -171,7 +167,7 @@ public class AuthController {
                         "token", token,
                         "role", "TENANT",
                         "name", tenantName,
-                        "isNewAccount", true // Flag para o Frontend saber que é conta nova (se quiser mostrar um "Bem-vindo")
+                        "isNewAccount", true
                 ));
 
             } else {
@@ -218,21 +214,11 @@ public class AuthController {
         String name = (String) request.get("name");
         String email = (String) request.get("email");
         String password = (String) request.get("password");
-
         String phone = (String) request.get("phone");
-        Integer age = null;
-        if (request.get("age") != null) {
-            age = Integer.parseInt(request.get("age").toString());
-        }
+        Integer age = request.get("age") != null ? Integer.parseInt(request.get("age").toString()) : null;
 
-        if (tokenStr == null)
-            return ResponseEntity.badRequest().body(Map.of("error", "Token obrigatório."));
-        if (name == null || name.isBlank())
-            return ResponseEntity.badRequest().body(Map.of("error", "Nome obrigatório."));
-        if (email == null || email.isBlank())
-            return ResponseEntity.badRequest().body(Map.of("error", "E-mail obrigatório."));
-        if (password == null || password.isBlank())
-            return ResponseEntity.badRequest().body(Map.of("error", "Senha obrigatória."));
+        if (tokenStr == null || name == null || email == null || password == null)
+            return ResponseEntity.badRequest().body(Map.of("error", "Dados obrigatórios faltando."));
 
         UUID tokenUUID;
         try {
@@ -241,26 +227,21 @@ public class AuthController {
             return ResponseEntity.badRequest().body(Map.of("error", "Token em formato inválido."));
         }
 
-        Invite invite = inviteRepository.findById(tokenUUID)
-                .orElseThrow(() -> new RuntimeException("Convite inválido."));
+        Invite invite = inviteRepository.findById(tokenUUID).orElseThrow(() -> new RuntimeException("Convite inválido."));
 
         if (invite.isUsed() || invite.getExpiresAt().isBefore(LocalDateTime.now())) {
             return ResponseEntity.badRequest().body(Map.of("error", "Convite inválido ou expirado."));
         }
 
-        Tenant tenant = tenantRepository.findById(invite.getTenantId())
-                .orElseThrow(() -> new RuntimeException("Personal não encontrado."));
+        Tenant tenant = tenantRepository.findById(invite.getTenantId()).orElseThrow(() -> new RuntimeException("Personal não encontrado."));
 
         try {
             TenantContext.setTenant(tenant.getSchemaName());
 
-            Optional<Student> existingStudent = studentRepository.findByEmail(email);
-            if(existingStudent.isPresent()){
+            if(studentRepository.findByEmail(email).isPresent()){
                 return ResponseEntity.badRequest().body(Map.of("error", "Este e-mail já está cadastrado nesta academia."));
             }
-
-            Optional<Student> existingPhone = studentRepository.findByPhone(phone);
-            if(existingPhone.isPresent()){
+            if(studentRepository.findByPhone(phone).isPresent()){
                 return ResponseEntity.badRequest().body(Map.of("error", "Este número de WhatsApp já está em uso nesta academia."));
             }
 
@@ -277,12 +258,94 @@ public class AuthController {
             TenantContext.clear();
         }
 
-        StudentDirectory directory = new StudentDirectory(email, tenant.getId());
-        studentDirectoryRepository.save(directory);
-
+        studentDirectoryRepository.save(new StudentDirectory(email, tenant.getId()));
         invite.setUsed(true);
         inviteRepository.save(invite);
 
         return ResponseEntity.ok(Map.of("message", "Aluno cadastrado com sucesso!"));
+    }
+
+    // 🌟 -------------------------------------------------------- 🌟
+    // 🌟 NOVOS ENDPOINTS DE RECUPERAÇÃO DE SENHA (O DETETIVE)     🌟
+    // 🌟 -------------------------------------------------------- 🌟
+
+    @Transactional
+    @PostMapping("/forgot-password")
+    public ResponseEntity<?> forgotPassword(@RequestBody Map<String, String> request) {
+        String email = request.get("email");
+        if (email == null) return ResponseEntity.badRequest().body(Map.of("error", "E-mail obrigatório."));
+
+        String userType = null;
+
+        // O Detetive: É um Personal?
+        if (tenantRepository.findByOwnerEmail(email).isPresent()) {
+            userType = "TENANT";
+        }
+        // O Detetive: É um Aluno?
+        else if (studentDirectoryRepository.findByEmail(email).isPresent()) {
+            userType = "STUDENT";
+        }
+
+        // Se achou alguém com esse e-mail no sistema
+        if (userType != null) {
+            // Limpa tokens velhos para não acumular lixo
+            passwordResetTokenRepository.deleteByEmail(email);
+
+            // Gera o código gigante
+            String tokenStr = UUID.randomUUID().toString();
+            PasswordResetToken token = new PasswordResetToken(tokenStr, email, userType, LocalDateTime.now().plusHours(1));
+            passwordResetTokenRepository.save(token);
+
+            // 🚀 Dispara o e-mail!
+            emailService.sendPasswordResetEmail(email, tokenStr);
+        }
+
+        // Retornamos sempre a mesma mensagem (Prática de segurança: não confirmar se o e-mail existe para hackers)
+        return ResponseEntity.ok(Map.of("message", "Se o e-mail estiver cadastrado, receberá um link de recuperação."));
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<?> resetPassword(@RequestBody Map<String, String> request) {
+        String tokenStr = request.get("token");
+        String newPassword = request.get("newPassword");
+
+        if (tokenStr == null || newPassword == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Token e nova senha são obrigatórios."));
+        }
+
+        Optional<PasswordResetToken> tokenOpt = passwordResetTokenRepository.findByToken(tokenStr);
+
+        // Verifica se o código existe e não passou de 1 hora
+        if (tokenOpt.isEmpty() || tokenOpt.get().getExpiryDate().isBefore(LocalDateTime.now())) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Link de recuperação inválido ou expirado."));
+        }
+
+        PasswordResetToken token = tokenOpt.get();
+        String encodedPassword = passwordEncoder.encode(newPassword);
+
+        if ("TENANT".equals(token.getUserType())) {
+            // Atualiza a senha do Personal
+            Tenant tenant = tenantRepository.findByOwnerEmail(token.getEmail()).orElseThrow();
+            tenant.setPassword(encodedPassword);
+            tenantRepository.save(tenant);
+        } else {
+            // Atualiza a senha do Aluno (Entra no schema correto)
+            StudentDirectory dir = studentDirectoryRepository.findByEmail(token.getEmail()).orElseThrow();
+            Tenant tenant = tenantRepository.findById(dir.getTenantId()).orElseThrow();
+
+            TenantContext.setTenant(tenant.getSchemaName());
+            try {
+                Student student = studentRepository.findByEmail(token.getEmail()).orElseThrow();
+                student.setPassword(encodedPassword);
+                studentRepository.save(student);
+            } finally {
+                TenantContext.clear();
+            }
+        }
+
+        // Destrói o token para não ser usado 2 vezes
+        passwordResetTokenRepository.delete(token);
+
+        return ResponseEntity.ok(Map.of("message", "Senha alterada com sucesso!"));
     }
 }
